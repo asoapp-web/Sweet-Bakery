@@ -4,7 +4,7 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m1
     integrations:
-      app_store_connect: SweetBakery API
+      app_store_connect: SweetBakery API  # Замените на реальный App Store Connect ID для SweetBakery
     environment:
       ios_signing:
         distribution_type: app_store
@@ -12,144 +12,72 @@ workflows:
       vars:
         BUNDLE_ID: "com.SweetBakery"
         XCODE_SCHEME: "SweetBakery"
-        APP_STORE_APPLE_ID: 6757008025
-        NEW_VERSION: "1.1"
-        NEW_BUILD: "1"
+        APP_STORE_APPLE_ID: 6757008025  # Замените на реальный Apple ID приложения SweetBakery
+        # Жестко задаем новые версии для SweetBakery
+        NEW_VERSION: "1.1"  # Укажите нужную версию для SweetBakery
+        NEW_BUILD: "1"      # Укажите нужный билд-номер для SweetBakery
       xcode: latest
     scripts:
-      - name: "Set up provisioning profiles settings on Xcode project"
+      - name: Set up provisioning profiles settings on Xcode project
         script: xcode-project use-profiles
       
-      - name: "FIX COMBINE IMPORTS BEFORE BUILD"
-        script: |
-          echo "FIXING ALL COMBINE IMPORTS"
-          echo "Making ALL Combine imports consistent"
-          
-          echo "Searching for Swift files in project..."
-          SWIFT_FILES=$(find . -name "*.swift" -type f | wc -l)
-          echo "Found $SWIFT_FILES Swift files"
-          
-          echo "Files containing Combine imports:"
-          COMBINE_FILES=$(grep -r "import Combine" . --include="*.swift" -l)
-          echo "$COMBINE_FILES" | while read FILE; do
-            echo "  - $FILE"
-          done
-          
-          echo "Making ALL Combine imports standard (without 'internal')..."
-          if [ -n "$COMBINE_FILES" ]; then
-            echo "$COMBINE_FILES" | while read FILE; do
-              echo "  Processing: $FILE"
-              # Создаем backup
-              cp "$FILE" "${FILE}.backup"
-              
-              # Заменяем internal import Combine на import Combine
-              sed -i '' 's/internal import Combine/import Combine/g' "$FILE"
-              # Убедимся, что нет лишних пробелов
-              sed -i '' 's/^[[:space:]]*import Combine[[:space:]]*$/import Combine/g' "$FILE"
-              
-              echo "    Fixed imports in $FILE"
-            done
-          else
-            echo "  No files with Combine imports found"
-          fi
-          
-          echo "FIXING DEPRECATED API CORRECTLY"
-          # Найдем файлы с устаревшим API
-          DEPRECATED_FILES=$(find . -name "*.swift" -type f -exec grep -l "unarchiveTopLevelObjectWithData" {} \;)
-          if [ -n "$DEPRECATED_FILES" ]; then
-            echo "$DEPRECATED_FILES" | while read FILE; do
-              echo "  Fixing deprecated API in: $FILE"
-              # Создаем backup
-              cp "$FILE" "${FILE}.deprecated_backup"
-              
-              # ВАЖНО: Нужно правильное исправление для HTTPCookie
-              # HTTPCookie не соответствует NSCoding, поэтому нужно использовать другой подход
-              
-              # Временный файл для исправления
-              TEMP_FILE="${FILE}.temp"
-              
-              # Правильное исправление: использовать unarchivedObject(ofClasses:from:)
-              # или вернуть старый метод, если не можем исправить
-              
-              # Вариант 1: Используем более безопасный подход с подавлением предупреждения
-              # или просто оставляем как есть с pragma
-              
-              echo "    Note: HTTPCookie не поддерживает NSCoding, оставляем старый метод с pragma"
-              
-              # Добавляем pragma для подавления предупреждения
-              sed -i '' 's/if let sweetCookie = try\? NSKeyedUnarchiver\.unarchiveTopLevelObjectWithData/#warning "Consider updating deprecated API"\
-              if let sweetCookie = try\? NSKeyedUnarchiver.unarchiveTopLevelObjectWithData/g' "$FILE"
-              
-              echo "    Added warning pragma to $FILE"
-            done
-          else
-            echo "  No deprecated API found"
-          fi
-          
-          echo "FINAL VERIFICATION"
-          echo "All Combine imports after fix:"
-          grep -r "import Combine" . --include="*.swift" | sort
-          
-          echo "SUMMARY"
-          echo "Standard 'import Combine' count:"
-          grep -r "^import Combine$" . --include="*.swift" | wc -l
-          echo "'internal import Combine' count (should be 0):"
-          grep -r "internal import Combine" . --include="*.swift" | wc -l
-          
-          echo "DONE All Combine imports are now consistent"
-      
-      - name: "UPDATE VERSIONS"
+      - name: RADICALLY UPDATE ALL VERSIONS
         script: |
           cd $CM_BUILD_DIR
-          echo "RADICAL VERSION UPDATE"
+          echo "=== RADICAL VERSION UPDATE ==="
           echo "Setting version to: $NEW_VERSION"
           echo "Setting build to: $NEW_BUILD"
           
-          # Удаляем backup файлы, которые попали в сборку
-          echo "Cleaning up backup files..."
-          find . -name "*.backup" -type f -delete
-          find . -name "*.deprecated_backup" -type f -delete
-          find . -name "*.temp" -type f -delete
-          
-          echo "Searching for version files"
+          # 1. НАЙДЕМ ВСЕ ВОЗМОЖНЫЕ ФАЙЛЫ С ВЕРСИЯМИ
+          echo "=== Searching for version files ==="
           find . -type f \( -name "*.plist" -o -name "*.pbxproj" -o -name "*.xcconfig" \) | head -20
           
-          echo "Updating ALL Info.plist files"
+          # 2. ОБНОВЛЯЕМ ВСЕ Info.plist ФАЙЛЫ
+          echo "=== Updating ALL Info.plist files ==="
           find . -name "Info.plist" -type f | while read PLIST; do
             echo "Processing: $PLIST"
             
+            # Проверяем что файл существует и доступен
             if [ -f "$PLIST" ]; then
+              # Получаем текущие значения
               CURRENT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "NOT_FOUND")
               CURRENT_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST" 2>/dev/null || echo "NOT_FOUND")
               echo "  Current: version=$CURRENT_VERSION, build=$CURRENT_BUILD"
               
-              /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST" 2>/dev/null && echo "  Set version to $NEW_VERSION" || echo "  Failed to set version"
-              /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$PLIST" 2>/dev/null && echo "  Set build to $NEW_BUILD" || echo "  Failed to set build"
+              # Устанавливаем новые значения
+              /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $NEW_VERSION" "$PLIST" 2>/dev/null && echo "  ✓ Set version to $NEW_VERSION" || echo "  ✗ Failed to set version"
+              /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$PLIST" 2>/dev/null && echo "  ✓ Set build to $NEW_BUILD" || echo "  ✗ Failed to set build"
               
+              # Проверяем
               CHECK_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo "ERROR")
               CHECK_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST" 2>/dev/null || echo "ERROR")
               echo "  Updated: version=$CHECK_VERSION, build=$CHECK_BUILD"
             else
-              echo "  File not found or not accessible"
+              echo "  ✗ File not found or not accessible"
             fi
             echo "  ---"
           done
           
-          echo "Checking project.pbxproj"
+          # 3. ОБНОВЛЯЕМ project.pbxproj (если версия там)
+          echo "=== Checking project.pbxproj ==="
           find . -name "*.pbxproj" -type f | while read PBXPROJ; do
             echo "Checking: $PBXPROJ"
             
+            # Ищем маркетинговую версию
             if grep -q "MARKETING_VERSION" "$PBXPROJ"; then
               echo "  Found MARKETING_VERSION in pbxproj"
+              # Создаем backup и обновляем
               cp "$PBXPROJ" "${PBXPROJ}.backup"
-              sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $NEW_VERSION;/g" "$PBXPROJ" && echo "  Updated MARKETING_VERSION"
-              sed -i '' "s/CURRENT_PROJECT_VERSION = .*;/CURRENT_PROJECT_VERSION = $NEW_BUILD;/g" "$PBXPROJ" && echo "  Updated CURRENT_PROJECT_VERSION"
+              sed -i '' "s/MARKETING_VERSION = .*;/MARKETING_VERSION = $NEW_VERSION;/g" "$PBXPROJ" && echo "  ✓ Updated MARKETING_VERSION"
+              sed -i '' "s/CURRENT_PROJECT_VERSION = .*;/CURRENT_PROJECT_VERSION = $NEW_BUILD;/g" "$PBXPROJ" && echo "  ✓ Updated CURRENT_PROJECT_VERSION"
             fi
             
+            # Ищем другие паттерны версий
             grep -n "version" "$PBXPROJ" | head -5 && echo "  Found 'version' patterns"
           done
           
-          echo "Force update via xcodebuild"
+          # 4. ОБНОВЛЯЕМ ЧЕРЕЗ XCODEBUILD С ПРИНУДИТЕЛЬНЫМИ НАСТРОЙКАМИ
+          echo "=== Force update via xcodebuild ==="
           for CONFIG in Debug Release; do
             echo "Updating $CONFIG configuration..."
             xcodebuild \
@@ -161,15 +89,17 @@ workflows:
               clean 2>&1 | tail -5 || echo "  xcodebuild completed for $CONFIG"
           done
           
-          echo "Checking with agvtool"
+          # 5. ПРОВЕРКА ЧЕРЕЗ AGVTOOL
+          echo "=== Checking with agvtool ==="
           agvtool what-marketing-version 2>/dev/null || echo "agvtool not available or failed"
           agvtool what-version 2>/dev/null || echo "agvtool not available or failed"
           
+          # Принудительно устанавливаем через agvtool
           echo "Forcing via agvtool..."
           agvtool new-marketing-version "$NEW_VERSION" 2>/dev/null || true
           agvtool new-version -all "$NEW_BUILD" 2>/dev/null || true
           
-          echo "FINAL VERIFICATION"
+          echo "=== FINAL VERIFICATION ==="
           echo "1. From first Info.plist:"
           FIRST_PLIST=$(find . -name "Info.plist" -type f | head -1)
           if [ -f "$FIRST_PLIST" ]; then
@@ -184,41 +114,36 @@ workflows:
             -configuration Release \
             -showBuildSettings 2>/dev/null | grep -E "VERSION|BUILD" | head -10 || echo "  No build settings found"
           
-          echo "SUMMARY"
+          echo "=== SUMMARY ==="
           echo "Expected in final IPA:"
           echo "  Version: $NEW_VERSION"
           echo "  Build: $NEW_BUILD"
       
-      - name: "BUILD AND VERIFY IPA"
+      - name: Build and verify IPA
         script: |
-          echo "PRE-BUILD FINAL CHECK"
-          echo "Checking Combine imports one more time:"
-          grep -r "import Combine" . --include="*.swift" | sort | head -20
-          
-          echo "Checking for backup files..."
-          find . -name "*.backup" -type f | head -5
-          
-          echo "BUILDING IPA"
+          echo "=== BUILDING IPA ==="
           echo "This should create IPA with:"
           echo "  Version: $NEW_VERSION"
           echo "  Build: $NEW_BUILD"
           
-          # Собираем с отключением некоторых предупреждений
+          # Собираем с явным указанием версий
           xcode-project build-ipa \
             --project "SweetBakery.xcodeproj" \
-            --scheme "$XCODE_SCHEME" \
-            --args "OTHER_SWIFT_FLAGS=-suppress-warnings"
+            --scheme "$XCODE_SCHEME"
           
-          echo "CHECKING GENERATED IPA"
+          # Проверяем что собралось
+          echo "=== CHECKING GENERATED IPA ==="
           IPA_FILE=$(find build/ios/ipa -name "*.ipa" -type f | head -1)
           if [ -f "$IPA_FILE" ]; then
             echo "IPA created: $IPA_FILE"
             echo "Size: $(du -h "$IPA_FILE" | cut -f1)"
             
+            # Пытаемся получить информацию из IPA
             echo "Extracting info from IPA..."
             TEMP_DIR=$(mktemp -d)
             unzip -q "$IPA_FILE" -d "$TEMP_DIR" 2>/dev/null || true
             
+            # Ищем Info.plist в распакованном IPA
             find "$TEMP_DIR" -name "Info.plist" -type f | while read PLIST; do
               echo "Found in IPA: $PLIST"
               echo "  Version: $(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST" 2>/dev/null || echo 'ERROR')"
@@ -228,12 +153,7 @@ workflows:
             rm -rf "$TEMP_DIR"
           else
             echo "ERROR: No IPA file found!"
-            echo "Searching for build artifacts..."
-            find . -type f -name "*.ipa" 2>/dev/null || echo "No IPA files found anywhere"
-            echo "Build directory contents:"
-            ls -la build/ 2>/dev/null || echo "No build directory"
-            ls -la build/ios/ 2>/dev/null || echo "No ios directory"
-            ls -la build/ios/xcarchive/ 2>/dev/null || echo "No xcarchive directory"
+            find build -type f -name "*.ipa" 2>/dev/null || echo "No IPA files in build directory"
           fi
     
     artifacts:

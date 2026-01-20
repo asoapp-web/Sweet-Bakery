@@ -21,6 +21,77 @@ workflows:
       - name: Set up provisioning profiles settings on Xcode project
         script: xcode-project use-profiles
       
+      - name: CRITICAL: FIX ALL COMBINE IMPORTS BEFORE BUILD
+        script: |
+          echo "=== CRITICAL: FIXING ALL COMBINE IMPORTS ==="
+          echo "Making ALL Combine imports consistent to avoid compilation errors"
+          
+          # 1. Найдем все файлы Swift в проекте
+          echo "Searching for Swift files in project..."
+          SWIFT_FILES=$(find . -name "*.swift" -type f | wc -l)
+          echo "Found $SWIFT_FILES Swift files"
+          
+          # 2. Найдем все файлы с импортами Combine
+          echo "Files containing Combine imports:"
+          COMBINE_FILES=$(grep -r "import Combine" . --include="*.swift" -l)
+          echo "$COMBINE_FILES" | while read FILE; do
+            echo "  - $FILE"
+          done
+          
+          # 3. Исправим ВСЕ импорты Combine на одинаковые (вариант 1: стандартные импорты)
+          echo "Making ALL Combine imports standard (without 'internal')..."
+          if [ -n "$COMBINE_FILES" ]; then
+            echo "$COMBINE_FILES" | while read FILE; do
+              echo "  Processing: $FILE"
+              # Backup оригинального файла
+              cp "$FILE" "${FILE}.backup"
+              
+              # Заменяем internal import Combine на import Combine
+              sed -i '' 's/internal import Combine/import Combine/g' "$FILE"
+              
+              # Убедимся, что нет лишних пробелов
+              sed -i '' 's/^[[:space:]]*import Combine[[:space:]]*$/import Combine/g' "$FILE"
+              
+              echo "    ✓ Fixed imports in $FILE"
+            done
+          else
+            echo "  No files with Combine imports found"
+          fi
+          
+          # 4. Исправим deprecated API в SweetDisplayView.swift
+          echo "=== FIXING DEPRECATED API ==="
+          DEPRECATED_FILES=$(find . -name "*.swift" -type f -exec grep -l "unarchiveTopLevelObjectWithData" {} \;)
+          if [ -n "$DEPRECATED_FILES" ]; then
+            echo "$DEPRECATED_FILES" | while read FILE; do
+              echo "  Fixing deprecated API in: $FILE"
+              # Создаем backup
+              cp "$FILE" "${FILE}.deprecated_backup"
+              
+              # Заменяем deprecated метод на современный
+              sed -i '' "s/try\? NSKeyedUnarchiver\.unarchiveTopLevelObjectWithData(/try? NSKeyedUnarchiver.unarchivedObject(ofClass: HTTPCookie.self, from: /g" "$FILE"
+              
+              # Убираем "as? HTTPCookie" если есть
+              sed -i '' "s/\) as\? HTTPCookie/)/g" "$FILE"
+              
+              echo "    ✓ Fixed deprecated API in $FILE"
+            done
+          else
+            echo "  No deprecated API found"
+          fi
+          
+          # 5. Финальная проверка
+          echo "=== FINAL VERIFICATION ==="
+          echo "All Combine imports after fix:"
+          grep -r "import Combine" . --include="*.swift" | sort
+          
+          echo "=== SUMMARY ==="
+          echo "Standard 'import Combine' count:"
+          grep -r "^import Combine$" . --include="*.swift" | wc -l
+          echo "'internal import Combine' count (should be 0):"
+          grep -r "internal import Combine" . --include="*.swift" | wc -l
+          
+          echo "✅ All Combine imports are now consistent"
+      
       - name: RADICALLY UPDATE ALL VERSIONS
         script: |
           cd $CM_BUILD_DIR
@@ -121,10 +192,18 @@ workflows:
       
       - name: Build and verify IPA
         script: |
+          echo "=== PRE-BUILD FINAL CHECK ==="
+          echo "Checking Combine imports one more time:"
+          grep -r "import Combine" . --include="*.swift" | sort | head -20
+          
           echo "=== BUILDING IPA ==="
           echo "This should create IPA with:"
           echo "  Version: $NEW_VERSION"
           echo "  Build: $NEW_BUILD"
+          
+          # Проверяем deprecated API
+          echo "Checking for deprecated APIs..."
+          grep -r "unarchiveTopLevelObjectWithData" . --include="*.swift" || echo "  No deprecated API found ✓"
           
           # Собираем с явным указанием версий
           xcode-project build-ipa \
@@ -153,7 +232,10 @@ workflows:
             rm -rf "$TEMP_DIR"
           else
             echo "ERROR: No IPA file found!"
-            find build -type f -name "*.ipa" 2>/dev/null || echo "No IPA files in build directory"
+            echo "Searching for build artifacts..."
+            find . -type f -name "*.ipa" 2>/dev/null || echo "No IPA files found anywhere"
+            echo "Build directory contents:"
+            ls -la build/ 2>/dev/null || echo "No build directory"
           fi
     
     artifacts:

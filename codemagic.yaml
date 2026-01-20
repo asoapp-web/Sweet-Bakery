@@ -14,7 +14,7 @@ workflows:
         XCODE_SCHEME: "SweetBakery"
         APP_STORE_APPLE_ID: 6757008025  # Замените на реальный Apple ID приложения SweetBakery
         # Жестко задаем новые версии для SweetBakery
-        NEW_VERSION: "1.0"  # Укажите нужную версию для SweetBakery
+        NEW_VERSION: "1.1"  # Укажите нужную версию для SweetBakery
         NEW_BUILD: "1"      # Укажите нужный билд-номер для SweetBakery
       xcode: latest
     scripts:

@@ -4,7 +4,7 @@ workflows:
     max_build_duration: 120
     instance_type: mac_mini_m1
     integrations:
-      app_store_connect: SweetBakery API  # Замените на реальный App Store Connect ID
+      app_store_connect: SweetBakery API  # Замените на реальный App Store Connect ID для SweetBakery
     environment:
       ios_signing:
         distribution_type: app_store
@@ -12,121 +12,13 @@ workflows:
       vars:
         BUNDLE_ID: "com.SweetBakery"
         XCODE_SCHEME: "SweetBakery"
-        APP_STORE_APPLE_ID: 6757008025  # Замените на реальный Apple ID приложения
-        NEW_VERSION: "1.1"
-        NEW_BUILD: "1"
+        APP_STORE_APPLE_ID: 6757008025  # Замените на реальный Apple ID приложения SweetBakery
+        # Жестко задаем новые версии для SweetBakery
+        NEW_VERSION: "1.0"  # Укажите нужную версию для SweetBakery
+        NEW_BUILD: "1"      # Укажите нужный билд-номер для SweetBakery
       xcode: latest
     scripts:
-      - name: AUTO-FIX SWIFT COMPILATION ERRORS
-        script: |
-          cd $CM_BUILD_DIR
-          echo "=== AUTO-FIXING SWIFT ERRORS ==="
-          
-          # 1. ИСПРАВЛЯЕМ SweetProfilePhotoManager.swift
-          if [ -f "SweetBakery/Managers/SweetProfilePhotoManager.swift" ]; then
-            echo "Fixing SweetProfilePhotoManager.swift..."
-            
-            # Создаем backup
-            cp "SweetBakery/Managers/SweetProfilePhotoManager.swift" "SweetBakery/Managers/SweetProfilePhotoManager.swift.backup"
-            
-            # Добавляем import Combine если его нет
-            if ! grep -q "import Combine" "SweetBakery/Managers/SweetProfilePhotoManager.swift"; then
-              echo "Adding import Combine..."
-              
-              # Создаем исправленную версию
-              cat > "SweetBakery/Managers/SweetProfilePhotoManager.swift.fixed" << 'EOF'
-import Combine
-import UIKit
-
-EOF
-              cat "SweetBakery/Managers/SweetProfilePhotoManager.swift" >> "SweetBakery/Managers/SweetProfilePhotoManager.swift.fixed"
-              mv "SweetBakery/Managers/SweetProfilePhotoManager.swift.fixed" "SweetBakery/Managers/SweetProfilePhotoManager.swift"
-              
-              echo "✓ Added Combine import"
-            else
-              echo "✓ Combine already imported"
-            fi
-            
-            # Проверяем что класс наследует ObservableObject
-            if grep -q "class SweetProfilePhotoManager:" "SweetBakery/Managers/SweetProfilePhotoManager.swift"; then
-              echo "✓ Class found, checking ObservableObject..."
-              
-              if ! grep -q "class SweetProfilePhotoManager: ObservableObject" "SweetBakery/Managers/SweetProfilePhotoManager.swift"; then
-                echo "Fixing ObservableObject inheritance..."
-                sed -i '' 's/class SweetProfilePhotoManager:/class SweetProfilePhotoManager: ObservableObject/g' "SweetBakery/Managers/SweetProfilePhotoManager.swift"
-                echo "✓ Fixed ObservableObject"
-              fi
-            fi
-          else
-            echo "⚠️ SweetProfilePhotoManager.swift not found"
-          fi
-          
-          # 2. ИСПРАВЛЯЕМ SweetDisplayView.swift
-          if [ -f "SweetBakery/Views/SweetDisplayView.swift" ]; then
-            echo "Fixing SweetDisplayView.swift (deprecated API)..."
-            
-            # Создаем backup
-            cp "SweetBakery/Views/SweetDisplayView.swift" "SweetBakery/Views/SweetDisplayView.swift.backup"
-            
-            # Проверяем наличие deprecated API
-            if grep -q "unarchiveTopLevelObjectWithData" "SweetBakery/Views/SweetDisplayView.swift"; then
-              echo "Found deprecated unarchiveTopLevelObjectWithData, fixing..."
-              
-              # Создаем исправленную версию
-              TEMP_FILE=$(mktemp)
-              
-              # Обрабатываем файл построчно
-              while IFS= read -r line; do
-                # Заменяем устаревший метод
-                if echo "$line" | grep -q "unarchiveTopLevelObjectWithData"; then
-                  echo "# FIXED: ${line}" >> "$TEMP_FILE"
-                  echo "$line" | sed 's/unarchiveTopLevelObjectWithData/unarchivedObject(ofClass: HTTPCookie.self, from:/g' | sed 's/ as? HTTPCookie {/)/g' >> "$TEMP_FILE"
-                else
-                  echo "$line" >> "$TEMP_FILE"
-                fi
-              done < "SweetBakery/Views/SweetDisplayView.swift"
-              
-              mv "$TEMP_FILE" "SweetBakery/Views/SweetDisplayView.swift"
-              echo "✓ Fixed deprecated API"
-            else
-              echo "✓ No deprecated API found"
-            fi
-          else
-            echo "⚠️ SweetDisplayView.swift not found"
-          fi
-          
-          # 3. ПРОВЕРЯЕМ ДРУГИЕ ПОТЕНЦИАЛЬНЫЕ ПРОБЛЕМЫ
-          echo "=== CHECKING FOR OTHER SWIFT ISSUES ==="
-          
-          # Ищем другие файлы с deprecated API
-          find . -name "*.swift" -type f | while read SWIFT_FILE; do
-            if grep -q "unarchiveTopLevelObjectWithData" "$SWIFT_FILE"; then
-              echo "⚠️ Found deprecated API in: $SWIFT_FILE"
-              
-              # Создаем backup и фиксим
-              cp "$SWIFT_FILE" "${SWIFT_FILE}.backup"
-              sed -i '' 's/unarchiveTopLevelObjectWithData/unarchivedObject(ofClass: HTTPCookie.self, from:/g' "$SWIFT_FILE"
-              sed -i '' 's/ as? HTTPCookie {/)/g' "$SWIFT_FILE"
-              echo "  ✓ Auto-fixed"
-            fi
-            
-            # Проверяем отсутствие import Combine в ObservableObject классах
-            if grep -q "ObservableObject" "$SWIFT_FILE" && ! grep -q "import Combine" "$SWIFT_FILE"; then
-              echo "⚠️ Found ObservableObject without Combine import in: $SWIFT_FILE"
-              
-              # Проверяем что это не тестовый файл
-              if ! echo "$SWIFT_FILE" | grep -q "Test\|Mock"; then
-                # Добавляем import Combine
-                sed -i '' '1s/^/import Combine\
-/' "$SWIFT_FILE"
-                echo "  ✓ Added Combine import"
-              fi
-            fi
-          done
-          
-          echo "=== SWIFT FIXES COMPLETE ==="
-      
-      - name: Set up provisioning profiles
+      - name: Set up provisioning profiles settings on Xcode project
         script: xcode-project use-profiles
       
       - name: RADICALLY UPDATE ALL VERSIONS
